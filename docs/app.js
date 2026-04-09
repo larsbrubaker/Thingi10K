@@ -19,9 +19,9 @@ const filterState = {
   pwn:              'both',
 };
 
-const GEO_INPUT_IDS = [
-  'f-min-faces', 'f-max-faces', 'f-min-vertices', 'f-max-vertices',
-];
+// Polygon (face) range slider state — set from data at load time
+let polyMin = 0;
+let polyMax = 0;
 
 // ── Mesh CDN ────────────────────────────────────────────────────────────────
 const MESH_CDN = 'https://cdn.jsdelivr.net/gh/larsbrubaker';
@@ -276,9 +276,9 @@ function buildList({ total, models }) {
     el.innerHTML = `
       <div class="item-name">${m.name}</div>
       <div class="item-meta">
-        <span>${m.id}</span>
-        <span>·</span>
         <span>Thing ${m.thing_id}</span>
+        <span>·</span>
+        <span>${m.faces > 0 ? m.faces.toLocaleString() + ' poly' : '—'}</span>
         <span class="fmt-badge">${m.format}</span>
       </div>
     `;
@@ -297,13 +297,42 @@ function selectModel(m) {
   loadMesh(m);
 }
 
+// ── Polygon dual-range slider ─────────────────────────────────────────────────
+function updatePolyFill() {
+  const sliderMin = document.getElementById('poly-min');
+  const absMin = parseInt(sliderMin.min) || 0;
+  const absMax = parseInt(sliderMin.max) || 1;
+  const range  = absMax - absMin || 1;
+  const lowPct  = ((polyMin - absMin) / range * 100).toFixed(2) + '%';
+  const highPct = ((polyMax - absMin) / range * 100).toFixed(2) + '%';
+  document.getElementById('dual-range').style.setProperty('--low',  lowPct);
+  document.getElementById('dual-range').style.setProperty('--high', highPct);
+  document.getElementById('poly-label-min').textContent = polyMin.toLocaleString();
+  document.getElementById('poly-label-max').textContent = polyMax.toLocaleString();
+  sliderMin.value = polyMin;
+  document.getElementById('poly-max').value = polyMax;
+}
+
+function resetPolyToSet(models) {
+  const faceCounts = models.map(m => m.faces).filter(f => f > 0);
+  if (faceCounts.length === 0) return;
+  let newMin = faceCounts[0], newMax = faceCounts[0];
+  for (const f of faceCounts) {
+    if (f < newMin) newMin = f;
+    if (f > newMax) newMax = f;
+  }
+  const sliderMin = document.getElementById('poly-min');
+  const sliderMax = document.getElementById('poly-max');
+  sliderMin.min = sliderMax.min = newMin;
+  sliderMin.max = sliderMax.max = newMax;
+  polyMin = newMin;
+  polyMax = newMax;
+  updatePolyFill();
+}
+
 // ── Client-side filtering & sorting ─────────────────────────────────────────
-function filterAndSort() {
-  const search  = document.getElementById('search').value.trim().toLowerCase();
-  const minFaces = parseFloat(document.getElementById('f-min-faces').value);
-  const maxFaces = parseFloat(document.getElementById('f-max-faces').value);
-  const minVerts = parseFloat(document.getElementById('f-min-vertices').value);
-  const maxVerts = parseFloat(document.getElementById('f-max-vertices').value);
+function filterAndSort(skipPoly = false) {
+  const search = document.getElementById('search').value.trim().toLowerCase();
 
   let results = allModels.filter(m => {
     // Text search
@@ -316,14 +345,9 @@ function filterAndSort() {
     for (const [key, val] of Object.entries(filterState)) {
       if (val !== 'both' && m[key] !== (val === 'true')) return false;
     }
-    // Geometry range filters
-    if (m.faces > 0) {
-      if (!isNaN(minFaces) && m.faces < minFaces) return false;
-      if (!isNaN(maxFaces) && m.faces > maxFaces) return false;
-    }
-    if (m.vertices > 0) {
-      if (!isNaN(minVerts) && m.vertices < minVerts) return false;
-      if (!isNaN(maxVerts) && m.vertices > maxVerts) return false;
+    // Polygon range filter
+    if (!skipPoly && m.faces > 0) {
+      if (m.faces < polyMin || m.faces > polyMax) return false;
     }
     return true;
   });
@@ -341,10 +365,16 @@ function filterAndSort() {
   return results;
 }
 
-function applyFilters() {
+function applyFilters({ resetPoly = false } = {}) {
   saveUIState();
-  const all = filterAndSort();
-  buildList({ total: all.length, models: all.slice(0, 100) });
+  if (resetPoly) {
+    const noPolyResults = filterAndSort(true);
+    resetPolyToSet(noPolyResults);
+    buildList({ total: noPolyResults.length, models: noPolyResults.slice(0, 100) });
+  } else {
+    const results = filterAndSort(false);
+    buildList({ total: results.length, models: results.slice(0, 100) });
+  }
 }
 
 // ── Sort button rendering ────────────────────────────────────────────────────
@@ -375,9 +405,8 @@ function saveUIState() {
     sortKey,
     sortDir,
     filters: { ...filterState },
-    geo: Object.fromEntries(
-      GEO_INPUT_IDS.map(id => [id, document.getElementById(id).value])
-    ),
+    polyMin,
+    polyMax,
   }));
 }
 
@@ -395,10 +424,15 @@ function restoreUIState() {
         }
       }
     }
-    GEO_INPUT_IDS.forEach(id => {
-      const v = state.geo?.[id];
-      if (v != null && v !== '') document.getElementById(id).value = v;
-    });
+    // Restore poly range only if within current bounds
+    const absMin = parseInt(document.getElementById('poly-min').min) || 0;
+    const absMax = parseInt(document.getElementById('poly-min').max) || 0;
+    if (state.polyMin != null && state.polyMax != null
+        && state.polyMin >= absMin && state.polyMax <= absMax) {
+      polyMin = state.polyMin;
+      polyMax = state.polyMax;
+      updatePolyFill();
+    }
   } catch (_) { /* ignore corrupt state */ }
 }
 
@@ -411,13 +445,13 @@ document.getElementById('btn-wireframe').addEventListener('click', () => {
   if (currentMesh) currentMesh.material.wireframe = isWireframe;
 });
 
-// Tri-state filter buttons
+// Tri-state filter buttons — reset poly range when these change
 document.querySelectorAll('.tri-group').forEach(group => {
   group.addEventListener('click', e => {
     const btn = e.target.closest('.tri-btn');
     if (!btn) return;
     applyTriState(group.dataset.filter, btn.dataset.value);
-    applyFilters();
+    applyFilters({ resetPoly: true });
   });
 });
 
@@ -435,19 +469,30 @@ document.querySelectorAll('.sort-btn').forEach(btn => {
   });
 });
 
-// Search (debounced)
+// Search (debounced) — reset poly range when search changes
 let debounce;
 document.getElementById('search').addEventListener('input', () => {
   clearTimeout(debounce);
-  debounce = setTimeout(applyFilters, 250);
+  debounce = setTimeout(() => applyFilters({ resetPoly: true }), 250);
 });
 
-// Geometry range inputs (debounced)
-GEO_INPUT_IDS.forEach(id => {
-  document.getElementById(id).addEventListener('input', () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(applyFilters, 400);
-  });
+// Polygon dual-range slider
+document.getElementById('poly-min').addEventListener('input', e => {
+  const val = parseInt(e.target.value);
+  const max = parseInt(document.getElementById('poly-max').value);
+  polyMin = Math.min(val, max);
+  updatePolyFill();
+  clearTimeout(debounce);
+  debounce = setTimeout(() => applyFilters(), 120);
+});
+
+document.getElementById('poly-max').addEventListener('input', e => {
+  const val = parseInt(e.target.value);
+  const min = parseInt(document.getElementById('poly-min').value);
+  polyMax = Math.max(val, min);
+  updatePolyFill();
+  clearTimeout(debounce);
+  debounce = setTimeout(() => applyFilters(), 120);
 });
 
 // Load all model metadata, then boot the UI
@@ -456,16 +501,11 @@ fetch('data/models.json')
   .then(models => {
     allModels = models;
 
-    // Set geo filter max attributes from dataset
-    const maxV = Math.max(...models.map(m => m.vertices));
-    const maxF = Math.max(...models.map(m => m.faces));
+    // Init polygon slider from full dataset
     const geoSection = document.getElementById('geo-section');
     geoSection.removeAttribute('hidden');
     geoSection.open = false;  // collapsed by default
-    document.getElementById('f-max-faces').setAttribute('max', maxF);
-    document.getElementById('f-min-faces').setAttribute('max', maxF);
-    document.getElementById('f-max-vertices').setAttribute('max', maxV);
-    document.getElementById('f-min-vertices').setAttribute('max', maxV);
+    resetPolyToSet(models);
 
     restoreUIState();
     renderSortButtons();
