@@ -7,3 +7,6 @@ target/
 
 # Generated geometry stats (now merged into the zip)
 mesh_stats.csv
+
+# Mesh export output — pushed separately to Thingi10K-meshes-{1,2,3} repos
+mesh-export/
