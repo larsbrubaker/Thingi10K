@@ -154,19 +154,23 @@ fn load_models(zip_path: &PathBuf) -> Result<Vec<Model>, Box<dyn std::error::Err
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 async fn serve_index() -> Response {
-    serve_static_file("static/index.html", "text/html; charset=utf-8").await
+    serve_static_file("docs/index.html", "text/html; charset=utf-8").await
 }
 
 async fn serve_css() -> Response {
-    serve_static_file("static/style.css", "text/css; charset=utf-8").await
+    serve_static_file("docs/style.css", "text/css; charset=utf-8").await
 }
 
 async fn serve_favicon() -> Response {
-    serve_static_file("static/favicon.svg", "image/svg+xml").await
+    serve_static_file("docs/favicon.svg", "image/svg+xml").await
 }
 
 async fn serve_js() -> Response {
-    serve_static_file("static/app.js", "application/javascript; charset=utf-8").await
+    serve_static_file("docs/app.js", "application/javascript; charset=utf-8").await
+}
+
+async fn serve_models_json() -> Response {
+    serve_static_file("docs/data/models.json", "application/json; charset=utf-8").await
 }
 
 async fn serve_static_file(path: &str, content_type: &'static str) -> Response {
@@ -381,6 +385,7 @@ async fn main() {
         .route("/favicon.svg", get(serve_favicon))
         .route("/style.css", get(serve_css))
         .route("/app.js", get(serve_js))
+        .route("/data/models.json", get(serve_models_json))
         .route("/api/stats", get(get_stats))
         .route("/api/models", get(get_models))
         .route("/mesh/:id", get(get_mesh))
