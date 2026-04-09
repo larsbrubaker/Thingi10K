@@ -8,6 +8,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{cmp::Reverse, collections::HashMap, io::Read, path::PathBuf, sync::Arc};
 
+// Mesh-export directory used when the zip is absent (local dev without zip).
+const MESH_EXPORT_DIR: &str = "mesh-export";
+
 // ── Data model ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,13 +53,42 @@ struct AppState {
     max_faces:    u64,
 }
 
-// ── Startup: load models from zip ─────────────────────────────────────────────
+// ── Startup: load models ──────────────────────────────────────────────────────
 
 fn parse_bool(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case("true")
 }
 
+/// Load models from the pre-generated docs/data/models.json (used when the
+/// zip is absent). The JSON format matches the output of export_static.
+fn load_models_from_json(path: &PathBuf) -> Result<Vec<Model>, Box<dyn std::error::Error>> {
+    #[derive(Deserialize)]
+    struct JModel {
+        id: u64, thing_id: u64, name: String, license: String, format: String,
+        closed: bool, edge_manifold: bool, vertex_manifold: bool,
+        single_component: bool, pwn: bool, duplicated_faces: bool,
+        degenerate_faces: bool, vertices: u64, faces: u64,
+    }
+
+    let text = std::fs::read_to_string(path)?;
+    let jmodels: Vec<JModel> = serde_json::from_str(&text)?;
+    let models = jmodels.into_iter().map(|j| Model {
+        link: format!("https://www.thingiverse.com/thing:{}", j.thing_id),
+        id: j.id, thing_id: j.thing_id, name: j.name, license: j.license,
+        format: j.format, closed: j.closed, edge_manifold: j.edge_manifold,
+        vertex_manifold: j.vertex_manifold, single_component: j.single_component,
+        pwn: j.pwn, duplicated_faces: j.duplicated_faces,
+        degenerate_faces: j.degenerate_faces, vertices: j.vertices, faces: j.faces,
+    }).collect();
+    Ok(models)
+}
+
 fn load_models(zip_path: &PathBuf) -> Result<Vec<Model>, Box<dyn std::error::Error>> {
+    if !zip_path.exists() {
+        let json_path = PathBuf::from("docs/data/models.json");
+        println!("{} not found — falling back to {}", zip_path.display(), json_path.display());
+        return load_models_from_json(&json_path);
+    }
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
@@ -262,9 +294,6 @@ async fn get_mesh(
     let zip_path = state.zip_path.clone();
 
     let result = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, &'static str), String> {
-        let file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-
         let candidates: &[(&str, &str)] = &[
             ("stl", "model/stl"),
             ("obj", "text/plain"),
@@ -272,15 +301,40 @@ async fn get_mesh(
             ("off", "text/plain"),
         ];
 
-        for (ext, mime) in candidates {
-            let entry_name = format!("Thingi10K/raw_meshes/{}.{}", id, ext);
-            if let Ok(mut entry) = archive.by_name(&entry_name) {
-                let mut buf = Vec::with_capacity(entry.size() as usize);
-                entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-                return Ok((buf, mime));
+        if zip_path.exists() {
+            // Normal path: read from the zip archive.
+            let file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+            let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+            for (ext, mime) in candidates {
+                let entry_name = format!("Thingi10K/raw_meshes/{}.{}", id, ext);
+                if let Ok(mut entry) = archive.by_name(&entry_name) {
+                    let mut buf = Vec::with_capacity(entry.size() as usize);
+                    entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+                    return Ok((buf, mime));
+                }
+            }
+        } else {
+            // Fallback: read from mesh-export/{1,2,3}/meshes/{id}.{ext}.zip
+            for (ext, mime) in candidates {
+                for repo in 1u8..=3 {
+                    let zip_file_path = format!(
+                        "{}/meshes-{}/meshes/{}.{}.zip",
+                        MESH_EXPORT_DIR, repo, id, ext
+                    );
+                    if let Ok(file) = std::fs::File::open(&zip_file_path) {
+                        let mut archive = zip::ZipArchive::new(file)
+                            .map_err(|e| e.to_string())?;
+                        let mut entry = archive.by_index(0)
+                            .map_err(|e| e.to_string())?;
+                        let mut buf = Vec::with_capacity(entry.size() as usize);
+                        entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+                        return Ok((buf, mime));
+                    }
+                }
             }
         }
-        Err(format!("Model {} not found in archive", id))
+
+        Err(format!("Model {} not found", id))
     })
     .await;
 
