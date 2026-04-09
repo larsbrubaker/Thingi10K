@@ -93,27 +93,15 @@ body {
 
 .sidebar-header h1 .accent { color: var(--accent); }
 
-.header-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.github-link {
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s, background 0.15s;
+.header-link {
+  display: block;
   text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius-sm);
+  transition: opacity 0.15s;
 }
 
-.github-link:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
+.header-link:hover { opacity: 0.75; }
 
 .sidebar-header .subtitle {
   font-size: 0.68rem;
@@ -610,18 +598,20 @@ body {
   --low:  0%;
   --high: 100%;
   position: relative;
-  height: 20px;
+  height: 24px;
   display: flex;
   align-items: center;
 }
 
-/* Track background with filled segment */
+/* Filled track rendered behind both inputs */
 .dual-range::before {
   content: '';
   position: absolute;
   left: 0; right: 0;
   height: 4px;
   border-radius: 2px;
+  z-index: 0;
+  pointer-events: none;
   background: linear-gradient(
     to right,
     var(--border-strong) var(--low),
@@ -629,7 +619,6 @@ body {
     var(--accent)        var(--high),
     var(--border-strong) var(--high)
   );
-  pointer-events: none;
 }
 
 .dual-range input[type="range"] {
@@ -639,44 +628,58 @@ body {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
-  height: 4px;
-  outline: none;
+  height: 24px;   /* full container height so thumb is vertically centred */
   margin: 0;
+  outline: none;
+  z-index: 1;
+}
+
+/* Hide the native track — our ::before pseudo-element is the track */
+.dual-range input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 4px;
+}
+
+.dual-range input[type="range"]::-moz-range-track {
+  background: transparent;
+  height: 4px;
+  border: none;
 }
 
 .dual-range input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   pointer-events: all;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   cursor: grab;
-  transition: transform 0.1s, background 0.1s;
+  transition: transform 0.1s;
+  margin-top: -6px;  /* (4px track − 16px thumb) / 2 */
 }
 
 .dual-range input[type="range"]::-webkit-slider-thumb:active {
   cursor: grabbing;
-  transform: scale(1.2);
+  transform: scale(1.15);
 }
 
 .dual-range input[type="range"]::-moz-range-thumb {
   pointer-events: all;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   cursor: grab;
 }
 
 .poly-range-labels {
   display: flex;
   justify-content: space-between;
-  margin-top: 6px;
+  margin-top: 4px;
   font-family: var(--font-mono);
   font-size: 0.67rem;
   color: var(--text-muted);
