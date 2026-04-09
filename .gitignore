@@ -1,0 +1,9 @@
+# Rust build artifacts
+target/
+
+# Temporary and backup zip files
+*.bak.zip
+*.tmp.zip
+
+# Generated geometry stats (now merged into the zip)
+mesh_stats.csv
