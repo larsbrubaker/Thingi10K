@@ -2,7 +2,7 @@
 
 A searchable, filterable 3D model archive browser for the [Thingi10K dataset](https://ten-thousand-models.appspot.com) — 10,000 3D-printable models from Thingiverse, with mesh quality metadata.
 
-![Thingi10K Browser showing the Octocat v1 model](docs/screenshot.png)
+![Thingi10K Browser](docs/screenshot.png)
 
 **[▶ Live Demo](https://larsbrubaker.github.io/Thingi10K/)**
 
