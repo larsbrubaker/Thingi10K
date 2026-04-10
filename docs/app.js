@@ -20,8 +20,10 @@ const filterState = {
 };
 
 // Polygon (face) range slider state — set from data at load time
-let polyMin = 0;
-let polyMax = 0;
+let polyMin    = 0;
+let polyMax    = 0;
+let polyAbsMin = 0;  // current slider bounds (change with filter set)
+let polyAbsMax = 1;
 
 // ── Mesh CDN ────────────────────────────────────────────────────────────────
 const MESH_CDN = 'https://cdn.jsdelivr.net/gh/larsbrubaker';
@@ -296,20 +298,18 @@ function selectModel(m) {
   loadMesh(m);
 }
 
-// ── Polygon dual-range slider ─────────────────────────────────────────────────
+// ── Polygon dual-range slider (custom drag) ───────────────────────────────────
 function updatePolyFill() {
-  const sliderMin = document.getElementById('poly-min');
-  const absMin = parseInt(sliderMin.min) || 0;
-  const absMax = parseInt(sliderMin.max) || 1;
-  const range  = absMax - absMin || 1;
-  const lowPct  = ((polyMin - absMin) / range * 100).toFixed(2) + '%';
-  const highPct = ((polyMax - absMin) / range * 100).toFixed(2) + '%';
-  document.getElementById('dual-range').style.setProperty('--low',  lowPct);
-  document.getElementById('dual-range').style.setProperty('--high', highPct);
+  const range   = polyAbsMax - polyAbsMin || 1;
+  const lowPct  = ((polyMin - polyAbsMin) / range * 100).toFixed(2) + '%';
+  const highPct = ((polyMax - polyAbsMin) / range * 100).toFixed(2) + '%';
+  document.getElementById('poly-thumb-min').style.left = lowPct;
+  document.getElementById('poly-thumb-max').style.left = highPct;
+  document.getElementById('range-fill').style.left  = lowPct;
+  document.getElementById('range-fill').style.width =
+    ((polyMax - polyMin) / range * 100).toFixed(2) + '%';
   document.getElementById('poly-label-min').textContent = polyMin.toLocaleString();
   document.getElementById('poly-label-max').textContent = polyMax.toLocaleString();
-  sliderMin.value = polyMin;
-  document.getElementById('poly-max').value = polyMax;
 }
 
 function resetPolyToSet(models) {
@@ -320,12 +320,10 @@ function resetPolyToSet(models) {
     if (f < newMin) newMin = f;
     if (f > newMax) newMax = f;
   }
-  const sliderMin = document.getElementById('poly-min');
-  const sliderMax = document.getElementById('poly-max');
-  sliderMin.min = sliderMax.min = newMin;
-  sliderMin.max = sliderMax.max = newMax;
-  polyMin = newMin;
-  polyMax = newMax;
+  polyAbsMin = newMin;
+  polyAbsMax = newMax;
+  polyMin    = newMin;
+  polyMax    = newMax;
   updatePolyFill();
 }
 
@@ -426,10 +424,8 @@ function restoreUIState() {
       }
     }
     // Restore poly range only if within current bounds
-    const absMin = parseInt(document.getElementById('poly-min').min) || 0;
-    const absMax = parseInt(document.getElementById('poly-min').max) || 0;
     if (state.polyMin != null && state.polyMax != null
-        && state.polyMin >= absMin && state.polyMax <= absMax) {
+        && state.polyMin >= polyAbsMin && state.polyMax <= polyAbsMax) {
       polyMin = state.polyMin;
       polyMax = state.polyMax;
       updatePolyFill();
@@ -447,10 +443,6 @@ document.getElementById('btn-wireframe').addEventListener('click', () => {
   document.getElementById('btn-wireframe').classList.toggle('active', isWireframe);
   if (currentMesh) currentMesh.material.wireframe = isWireframe;
 });
-
-// Accordion open/close state persistence
-document.getElementById('filters-section').addEventListener('toggle', saveUIState);
-document.getElementById('geo-section').addEventListener('toggle',     saveUIState);
 
 // Tri-state filter buttons — reset poly range when these change
 document.querySelectorAll('.tri-group').forEach(group => {
@@ -483,24 +475,79 @@ document.getElementById('search').addEventListener('input', () => {
   debounce = setTimeout(() => applyFilters({ resetPoly: true }), 250);
 });
 
-// Polygon dual-range slider
-document.getElementById('poly-min').addEventListener('input', e => {
-  const val = parseInt(e.target.value);
-  const max = parseInt(document.getElementById('poly-max').value);
-  polyMin = Math.min(val, max);
-  updatePolyFill();
-  clearTimeout(debounce);
-  debounce = setTimeout(() => applyFilters(), 120);
-});
+// Polygon dual-range — custom drag so handles never block each other.
+// When handles overlap, first mouse movement decides which thumb moves:
+// drag LEFT → min, drag RIGHT → max.
+(function initPolyDrag() {
+  const track = document.getElementById('dual-range');
 
-document.getElementById('poly-max').addEventListener('input', e => {
-  const val = parseInt(e.target.value);
-  const min = parseInt(document.getElementById('poly-min').value);
-  polyMax = Math.max(val, min);
-  updatePolyFill();
-  clearTimeout(debounce);
-  debounce = setTimeout(() => applyFilters(), 120);
-});
+  function pctToValue(pct) {
+    return Math.round(polyAbsMin + pct * (polyAbsMax - polyAbsMin));
+  }
+
+  track.addEventListener('mousedown', startDrag);
+  track.addEventListener('touchstart', e => startDrag(e.touches[0]), { passive: true });
+
+  function startDrag(e) {
+    const rect  = track.getBoundingClientRect();
+    const startX = e.clientX;
+    const range  = polyAbsMax - polyAbsMin || 1;
+    const minPct = (polyMin - polyAbsMin) / range;
+    const maxPct = (polyMax - polyAbsMin) / range;
+    const clickPct = Math.max(0, Math.min(1, (startX - rect.left) / rect.width));
+
+    const distMin = Math.abs(clickPct - minPct);
+    const distMax = Math.abs(clickPct - maxPct);
+
+    // If handles are not clearly separated, defer thumb choice to first drag direction
+    let isMin = distMin <= distMax;
+    let decided = Math.abs(distMin - distMax) > 0.01;
+
+    const minThumb = document.getElementById('poly-thumb-min');
+    const maxThumb = document.getElementById('poly-thumb-max');
+
+    function onMove(e) {
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      if (!decided) {
+        const dx = clientX - startX;
+        if (Math.abs(dx) < 3) return;    // wait for clear direction
+        isMin   = dx < 0;                // left = move min, right = move max
+        decided = true;
+      }
+
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const val = pctToValue(pct);
+
+      if (isMin) {
+        polyMin = Math.max(polyAbsMin, Math.min(val, polyMax - 1));
+        minThumb.classList.add('dragging');
+        maxThumb.classList.remove('dragging');
+      } else {
+        polyMax = Math.min(polyAbsMax, Math.max(val, polyMin + 1));
+        maxThumb.classList.add('dragging');
+        minThumb.classList.remove('dragging');
+      }
+
+      updatePolyFill();
+      clearTimeout(debounce);
+      debounce = setTimeout(() => applyFilters(), 120);
+    }
+
+    function onEnd() {
+      minThumb.classList.remove('dragging');
+      maxThumb.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend',  onEnd);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend',  onEnd);
+  }
+}());
 
 // Load all model metadata, then boot the UI
 fetch('data/models.json')
@@ -516,7 +563,12 @@ fetch('data/models.json')
 
     restoreUIState();
     renderSortButtons();
-    applyFilters();
+    applyFilters({ resetPoly: true });
+
+    // Attach accordion listeners AFTER restoreUIState so programmatic open
+    // during init doesn't overwrite the saved state
+    document.getElementById('filters-section').addEventListener('toggle', saveUIState);
+    document.getElementById('geo-section').addEventListener('toggle',     saveUIState);
 
     // Restore previously selected model
     try {
