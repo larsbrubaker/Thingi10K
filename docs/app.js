@@ -401,12 +401,14 @@ function applyTriState(filter, value) {
 // ── UI state persistence ─────────────────────────────────────────────────────
 function saveUIState() {
   localStorage.setItem('uiState', JSON.stringify({
-    search:  document.getElementById('search').value,
+    search:       document.getElementById('search').value,
     sortKey,
     sortDir,
-    filters: { ...filterState },
+    filters:      { ...filterState },
     polyMin,
     polyMax,
+    filtersOpen:  document.getElementById('filters-section').open,
+    polygonsOpen: document.getElementById('geo-section').open,
   }));
 }
 
@@ -433,6 +435,8 @@ function restoreUIState() {
       polyMax = state.polyMax;
       updatePolyFill();
     }
+    if (state.filtersOpen  != null) document.getElementById('filters-section').open = state.filtersOpen;
+    if (state.polygonsOpen != null) document.getElementById('geo-section').open     = state.polygonsOpen;
   } catch (_) { /* ignore corrupt state */ }
 }
 
@@ -444,6 +448,10 @@ document.getElementById('btn-wireframe').addEventListener('click', () => {
   document.getElementById('btn-wireframe').classList.toggle('active', isWireframe);
   if (currentMesh) currentMesh.material.wireframe = isWireframe;
 });
+
+// Accordion open/close state persistence
+document.getElementById('filters-section').addEventListener('toggle', saveUIState);
+document.getElementById('geo-section').addEventListener('toggle',     saveUIState);
 
 // Tri-state filter buttons — reset poly range when these change
 document.querySelectorAll('.tri-group').forEach(group => {
@@ -504,7 +512,7 @@ fetch('data/models.json')
     // Init polygon slider from full dataset
     const geoSection = document.getElementById('geo-section');
     geoSection.removeAttribute('hidden');
-    geoSection.open = false;  // collapsed by default
+    geoSection.open = true;  // default open
     resetPolyToSet(models);
 
     restoreUIState();
