@@ -356,24 +356,29 @@ body {
 }
 
 .item-meta {
-  font-family: var(--font-mono);
-  font-size: 0.67rem;
-  color: var(--text-muted);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 3px;
 }
 
-.fmt-badge {
-  display: inline-block;
-  padding: 1px 5px;
+.meta-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: 3px;
-  font-size: 0.6rem;
-  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.meta-fmt {
   letter-spacing: 0.06em;
+  color: var(--text-muted);
 }
 
 /* ── Main panel ────────────────────────────────────────────────────────────── */

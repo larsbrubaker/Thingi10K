@@ -276,10 +276,9 @@ function buildList({ total, models }) {
     el.innerHTML = `
       <div class="item-name">${m.name}</div>
       <div class="item-meta">
-        <span>Thing ${m.thing_id}</span>
-        <span>·</span>
-        <span>${m.faces > 0 ? m.faces.toLocaleString() + ' poly' : '—'}</span>
-        <span class="fmt-badge">${m.format}</span>
+        <span class="meta-badge">Thing ${m.thing_id}</span>
+        ${m.faces > 0 ? `<span class="meta-badge">${m.faces.toLocaleString()} poly</span>` : ''}
+        <span class="meta-badge meta-fmt">${m.format.toUpperCase()}</span>
       </div>
     `;
     el.addEventListener('click', () => selectModel(m));
