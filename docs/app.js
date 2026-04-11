@@ -46,6 +46,23 @@ async function fetchAndDecompress(url) {
   });
 }
 
+// ── Binary STL repair ───────────────────────────────────────────────────────
+// Some files in the dataset have a face-count header that is 1 larger than
+// the actual data (the file is truncated by exactly 50 bytes).  STLLoader
+// throws a DataView RangeError when it tries to read that missing face.
+// Fix by clamping the header to the number of complete 50-byte records.
+function fixTruncatedBinaryStl(buffer) {
+  if (buffer.byteLength < 84) return buffer;
+  const view    = new DataView(buffer);
+  const nFaces  = view.getUint32(80, true);
+  const expected = 80 + 4 + nFaces * 50;
+  if (expected <= buffer.byteLength) return buffer;       // file is fine
+  const actualFaces = Math.floor((buffer.byteLength - 84) / 50);
+  const fixed = buffer.slice(0);                          // copy so we can mutate
+  new DataView(fixed).setUint32(80, actualFaces, true);
+  return fixed;
+}
+
 // ── Three.js init ───────────────────────────────────────────────────────────
 function initThree() {
   const container = document.getElementById('viewer');
@@ -176,7 +193,7 @@ function loadMesh(model) {
     .then(buffer => {
       loading.style.display = 'none';
       const loader   = new THREE.STLLoader();
-      const geometry = loader.parse(buffer);
+      const geometry = loader.parse(fixTruncatedBinaryStl(buffer));
       geometry.computeVertexNormals();
 
       const mat = new THREE.MeshPhongMaterial({
