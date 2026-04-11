@@ -41,7 +41,7 @@ async function fetchAndDecompress(url) {
     fflate.unzip(compressed, (err, files) => {
       if (err) return reject(err);
       const data = Object.values(files)[0];
-      resolve(data.buffer);
+      resolve(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     });
   });
 }
