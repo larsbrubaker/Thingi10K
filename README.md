@@ -6,6 +6,8 @@ A searchable, filterable 3D model archive browser for the [Thingi10K dataset](ht
 
 **[▶ Live Demo](https://larsbrubaker.github.io/Thingi10K/)**
 
+> Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of Rust graphics and geometry libraries by Lars Brubaker.
+
 ---
 
 ## Features
