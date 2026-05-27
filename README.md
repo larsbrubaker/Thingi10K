@@ -4,6 +4,19 @@ A searchable, filterable 3D model archive browser for the [Thingi10K dataset](ht
 
 [![Thingi10K Browser](docs/screenshot.png)](https://larsbrubaker.github.io/Thingi10K/)
 
+## Support the Project
+
+<a href="https://buymeacoffee.com/larsbrubaker"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" width="210"></a>
+
+Thingi10K Browser is open-source and free to use, maintained in spare time as a labor of love. Friends James Smith and Dan Ruskin help out from time to time too.
+
+If you find it useful, here are a few ways to help keep development going:
+
+- **Donations:** [Buy Me a Coffee](https://buymeacoffee.com/larsbrubaker) — every coffee helps.
+- **Star the repo:** Costs nothing and helps others find the project.
+- **Report issues:** [Open an issue](https://github.com/larsbrubaker/Thingi10K/issues) for bugs or feature ideas.
+- **Contribute:** PRs welcome — open an issue first to discuss larger changes.
+
 **[▶ Live Demo](https://larsbrubaker.github.io/Thingi10K/)**
 
 > Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of Rust graphics and geometry libraries by Lars Brubaker.
@@ -66,16 +79,3 @@ Then push `mesh-export/meshes-N/` to the corresponding mesh repo.
 
 **Thingi10K** — [ten-thousand-models.appspot.com](https://ten-thousand-models.appspot.com)  
 10,000 models from Thingiverse with mesh quality annotations (closed, manifold, PWN, etc.).
-
-## Support the Project
-
-<a href="https://buymeacoffee.com/larsbrubaker"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" width="210"></a>
-
-Thingi10K Browser is open-source and free to use, maintained in spare time as a labor of love. Friends James Smith and Dan Ruskin help out from time to time too.
-
-If you find it useful, here are a few ways to help keep development going:
-
-- **Donations:** [Buy Me a Coffee](https://buymeacoffee.com/larsbrubaker) — every coffee helps.
-- **Star the repo:** Costs nothing and helps others find the project.
-- **Report issues:** [Open an issue](https://github.com/larsbrubaker/Thingi10K/issues) for bugs or feature ideas.
-- **Contribute:** PRs welcome — open an issue first to discuss larger changes.
