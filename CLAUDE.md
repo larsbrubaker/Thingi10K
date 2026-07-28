@@ -8,44 +8,7 @@ sidebar list on the left and a Three.js STL 3D preview + details panel on the ri
 
 **Dataset source:** https://ten-thousand-models.appspot.com
 
-## Running the Server
-
-```bash
-cd C:\Development\rust\Thingi10K
-cargo run
-```
-
-Then open **http://localhost:3000** in a browser.
-
-To point at a zip in a different location:
-```bash
-cargo run -- path/to/Thingi10K.zip
-```
-
-## Build & Test
-
-```bash
-cargo build          # debug build
-cargo build --release  # optimised build
-cargo test           # run all tests
-cargo clippy         # lint
-```
-
 ## Architecture
-
-| File | Purpose |
-|------|---------|
-| `src/main.rs` | Server entry point, all routes and handlers |
-| `static/index.html` | Single-page frontend (Three.js + vanilla JS) |
-| `Thingi10K.zip` | Dataset — read at runtime, never extracted |
-
-### API Routes
-
-| Route | Description |
-|-------|-------------|
-| `GET /` | Serves `static/index.html` |
-| `GET /api/models` | Filtered JSON list (max 100). Query params: `search`, `closed`, `edge_manifold`, `vertex_manifold`, `single_component`, `pwn` |
-| `GET /mesh/:id` | Streams the mesh file (STL/OBJ/PLY/OFF) from the zip |
 
 ### Key design decisions
 
@@ -69,9 +32,3 @@ cargo clippy         # lint
 3. **Confirm the test passes** (`cargo test`).
 
 Never commit a bug fix that isn't covered by a test.
-
-### General style
-- Prefer `Result`/`Option` over `unwrap` in library code; `expect` is acceptable in
-  `main` for startup failures with a clear message.
-- Keep handler functions focused — if a handler grows complex, extract helpers.
-- Avoid unsafe code unless there is no alternative; document every `unsafe` block.
