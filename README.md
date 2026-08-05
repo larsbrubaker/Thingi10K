@@ -84,8 +84,8 @@ through the robust (non-manifold-tolerant) pipeline:
 
 | Value | Meaning |
 |-------|---------|
-| `"manifold"` | Welds into a strictly manifold mesh |
-| `"nonmanifold"` | Imports as closed-but-non-manifold triangle soup |
+| `"manifold"` | Welds into a halfedge-pairable mesh the engine imports as manifold. Note this includes many models whose dataset flags say non-manifold: edges shared by 4+ triangles still pair into a consistent halfedge structure after exact welding. |
+| `"nonmanifold"` | Imports only as triangle soup (closed and orientable, but not pairable). None of the closed ≤20k-face STL models fall here. |
 | `"not_closed"` | Rejected — not geometrically closed even after welding |
 
 The dataset's original `closed` / `edge_manifold` / `vertex_manifold` flags
