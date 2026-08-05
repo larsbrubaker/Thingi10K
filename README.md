@@ -75,6 +75,36 @@ cargo run --bin export_static
 
 Then push `mesh-export/meshes-N/` to the corresponding mesh repo.
 
+## The `weld_result` column
+
+`docs/data/models.json` carries a `weld_result` field computed by
+[manifold-rust](https://github.com/larsbrubaker/manifold-rust) itself — the
+outcome of normalizing the mesh, welding coincident vertices, and importing
+through the robust (non-manifold-tolerant) pipeline:
+
+| Value | Meaning |
+|-------|---------|
+| `"manifold"` | Welds into a strictly manifold mesh |
+| `"nonmanifold"` | Imports as closed-but-non-manifold triangle soup |
+| `"not_closed"` | Rejected — not geometrically closed even after welding |
+
+The dataset's original `closed` / `edge_manifold` / `vertex_manifold` flags
+were computed with different tolerances and regularly disagree with this
+stricter pipeline, so consumers that feed meshes into manifold-rust (e.g. its
+Boolean Gallery demo) should trust `weld_result`. Records without the field
+(non-STL formats, very large meshes) have not been processed yet.
+
+Populate or update it with:
+
+```bash
+cargo run --release --bin update_weld_status              # closed STL <= 20k faces
+cargo run --release --bin update_weld_status -- --max-faces 100000
+cargo run --release --bin update_weld_status -- --refresh # recompute existing
+```
+
+Meshes are fetched from the CDN and cached in `mesh-cache/` (gitignored);
+progress saves every 100 models, so the run is interruptible and resumable.
+
 ## Dataset
 
 **Thingi10K** — [ten-thousand-models.appspot.com](https://ten-thousand-models.appspot.com)  

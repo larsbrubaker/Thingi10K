@@ -9,3 +9,4 @@ mesh_stats.csv
 
 # Mesh export output — pushed separately to Thingi10K-meshes-{1,2,3} repos
 mesh-export/
+mesh-cache/
