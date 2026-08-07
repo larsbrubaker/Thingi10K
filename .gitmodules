@@ -1,0 +1,9 @@
+[submodule "meshes/Thingi10K-meshes-1"]
+	path = meshes/Thingi10K-meshes-1
+	url = https://github.com/larsbrubaker/Thingi10K-meshes-1
+[submodule "meshes/Thingi10K-meshes-2"]
+	path = meshes/Thingi10K-meshes-2
+	url = https://github.com/larsbrubaker/Thingi10K-meshes-2
+[submodule "meshes/Thingi10K-meshes-3"]
+	path = meshes/Thingi10K-meshes-3
+	url = https://github.com/larsbrubaker/Thingi10K-meshes-3
