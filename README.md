@@ -39,7 +39,7 @@ The live demo is a fully static site hosted on GitHub Pages — no server requir
 | Layer | Detail |
 |-------|--------|
 | Frontend | Vanilla JS + Three.js, served from `docs/` via GitHub Pages |
-| Model metadata | `docs/data/models.json` — all 10 K records, ~3 MB |
+| Model metadata | `docs/data/models.json` — 9 999 records (81313, a NURBS-only OBJ, is excluded), ~3 MB |
 | Mesh files | Compressed per-model zips in three companion repos, served via jsDelivr CDN |
 | Decompression | [fflate](https://github.com/101arrowz/fflate) — in-browser, no server needed |
 
@@ -47,7 +47,7 @@ The live demo is a fully static site hosted on GitHub Pages — no server requir
 
 | Repo | ID range | Models |
 |------|----------|--------|
-| [Thingi10K-meshes-1](https://github.com/larsbrubaker/Thingi10K-meshes-1) | 32 770 – 88 580 | 3 333 |
+| [Thingi10K-meshes-1](https://github.com/larsbrubaker/Thingi10K-meshes-1) | 32 770 – 88 580 | 3 332 |
 | [Thingi10K-meshes-2](https://github.com/larsbrubaker/Thingi10K-meshes-2) | 88 581 – 301 929 | 3 333 |
 | [Thingi10K-meshes-3](https://github.com/larsbrubaker/Thingi10K-meshes-3) | 301 930 – 1 778 123 | 3 334 |
 
