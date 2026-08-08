@@ -646,14 +646,20 @@ fetch('data/models.json')
     try {
       const saved = JSON.parse(localStorage.getItem('selectedModel'));
       if (saved) {
-        // Find the live record so repo field etc. are current
-        const live = allModels.find(m => m.id === saved.id) || saved;
-        selectedId = live.id;
-        document.querySelectorAll('.model-item').forEach(el =>
-          el.classList.toggle('selected', parseInt(el.dataset.id) === live.id)
-        );
-        showDetails(live);
-        loadMesh(live);
+        // Find the live record so repo field etc. are current. A model that
+        // no longer exists (removed from the dataset) must not be restored
+        // from the stale localStorage copy — its mesh file is gone too.
+        const live = allModels.find(m => m.id === saved.id);
+        if (live) {
+          selectedId = live.id;
+          document.querySelectorAll('.model-item').forEach(el =>
+            el.classList.toggle('selected', parseInt(el.dataset.id) === live.id)
+          );
+          showDetails(live);
+          loadMesh(live);
+        } else {
+          localStorage.removeItem('selectedModel');
+        }
       }
     } catch (_) { /* ignore corrupt state */ }
   })
