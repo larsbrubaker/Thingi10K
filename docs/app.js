@@ -224,13 +224,28 @@ function loadMesh(model) {
       if (model.format === 'obj') {
         const text   = new TextDecoder().decode(buffer);
         const object = new THREE.OBJLoader().parse(text);
+        // Keep only meshes with real triangle data — a NURBS/curve-only OBJ
+        // (e.g. Rhino exports) yields empty geometries that render as NaN junk.
+        const meshes = [];
         object.traverse(obj => {
-          if (obj.isMesh) {
-            if (!obj.geometry.attributes.normal) obj.geometry.computeVertexNormals();
-            obj.material = makeMaterial();
+          if (obj.isMesh && obj.geometry.attributes.position &&
+              obj.geometry.attributes.position.count > 0) {
+            meshes.push(obj);
           }
         });
-        currentMesh = object;
+        if (meshes.length === 0) {
+          placeholder.querySelector('p').textContent =
+            'This OBJ contains no triangle faces (curve/surface data only) — cannot preview.';
+          placeholder.style.display = 'flex';
+          return;
+        }
+        const group = new THREE.Group();
+        for (const obj of meshes) {
+          if (!obj.geometry.attributes.normal) obj.geometry.computeVertexNormals();
+          obj.material = makeMaterial();
+          group.add(obj);
+        }
+        currentMesh = group;
       } else {
         const geometry = new THREE.STLLoader().parse(fixTruncatedBinaryStl(buffer));
         geometry.computeVertexNormals();

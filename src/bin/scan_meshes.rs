@@ -110,12 +110,21 @@ fn try_binary_stl(bytes: &[u8], size: u64) -> Option<(u64, u64)> {
     if bytes.len() < 84 {
         return None;
     }
-    let face_count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as u64;
+    let header_count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as u64;
     // The size check is the definitive binary STL test.  An ASCII STL accidentally
     // satisfying this equation is astronomically unlikely.
-    if 84 + face_count * 50 != size {
+    //
+    // Some dataset files are truncated by exactly one 50-byte record (header
+    // count is 1 larger than the data) — accept those too, clamped to the
+    // complete records, matching fixTruncatedBinaryStl in the viewer.
+    let expected = 84 + header_count * 50;
+    let face_count = if expected == size {
+        header_count
+    } else if header_count > 0 && expected == size + 50 && (size - 84) % 50 == 0 {
+        header_count - 1
+    } else {
         return None;
-    }
+    };
 
     // Deduplicate vertices by their raw float bytes.  Each face has 3 vertices
     // stored as 3 × f32 (12 bytes each) at offset 84 + i*50 + 12 + v*12.
@@ -218,4 +227,49 @@ fn count_off(bytes: &[u8]) -> (u64, u64) {
     let vertices = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
     let faces    = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     (vertices, faces)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a binary STL with `faces` triangles, each using distinct vertices.
+    fn binary_stl(faces: u32) -> Vec<u8> {
+        let mut out = vec![0u8; 80];
+        out.extend_from_slice(&faces.to_le_bytes());
+        for i in 0..faces {
+            out.extend_from_slice(&[0u8; 12]); // normal
+            for v in 0..3u32 {
+                out.extend_from_slice(&((i * 3 + v) as f32).to_le_bytes());
+                out.extend_from_slice(&1.0f32.to_le_bytes());
+                out.extend_from_slice(&2.0f32.to_le_bytes());
+            }
+            out.extend_from_slice(&[0u8; 2]); // attribute byte count
+        }
+        out
+    }
+
+    #[test]
+    fn exact_binary_stl_counts() {
+        let stl = binary_stl(4);
+        let (v, f) = try_binary_stl(&stl, stl.len() as u64).unwrap();
+        assert_eq!((v, f), (12, 4));
+    }
+
+    #[test]
+    fn truncated_binary_stl_clamps_to_complete_records() {
+        // Header claims 4 faces but the last 50-byte record is missing —
+        // the defect model 77942 has.  Must count the 3 complete faces.
+        let mut stl = binary_stl(4);
+        stl.truncate(stl.len() - 50);
+        let (v, f) = try_binary_stl(&stl, stl.len() as u64).unwrap();
+        assert_eq!(f, 3);
+        assert_eq!(v, 9);
+    }
+
+    #[test]
+    fn garbage_is_not_binary_stl() {
+        let bytes = vec![7u8; 200];
+        assert!(try_binary_stl(&bytes, 200).is_none());
+    }
 }
