@@ -26,10 +26,31 @@ let polyAbsMin = 0;  // current slider bounds (change with filter set)
 let polyAbsMax = 1;
 
 // ── Mesh CDN ────────────────────────────────────────────────────────────────
-const MESH_CDN = 'https://cdn.jsdelivr.net/gh/larsbrubaker';
+// `?cdn=<base>` overrides the CDN for local testing.
+const MESH_CDN = new URLSearchParams(location.search).get('cdn')
+  || 'https://cdn.jsdelivr.net/gh/larsbrubaker';
 
-function meshZipUrl(model) {
-  return `${MESH_CDN}/Thingi10K-meshes-${model.repo}@main/meshes/${model.id}.${model.format}.zip`;
+// Meshes whose zip exceeds jsDelivr's ~20 MB limit are split into parts:
+// ID.ext_1.zip … ID.ext_N.zip, each holding a 15 MiB slice of the raw file.
+// `model.parts` (from models.json) is N; absent means a single ID.ext.zip.
+function meshZipUrl(model, part) {
+  const suffix = part ? `_${part}` : '';
+  return `${MESH_CDN}/Thingi10K-meshes-${model.repo}@main/meshes/${model.id}.${model.format}${suffix}.zip`;
+}
+
+async function fetchModelBuffer(model) {
+  if (!model.parts) return fetchAndDecompress(meshZipUrl(model));
+  const parts = await Promise.all(
+    Array.from({ length: model.parts }, (_, i) => fetchAndDecompress(meshZipUrl(model, i + 1)))
+  );
+  const total  = parts.reduce((n, b) => n + b.byteLength, 0);
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const b of parts) {
+    joined.set(new Uint8Array(b), offset);
+    offset += b.byteLength;
+  }
+  return joined.buffer;
 }
 
 // ── fflate decompression ────────────────────────────────────────────────────
@@ -110,9 +131,7 @@ function initThree() {
 }
 
 // ── Camera fit ──────────────────────────────────────────────────────────────
-function fitCamera(geometry) {
-  geometry.computeBoundingBox();
-  const box    = geometry.boundingBox;
+function fitCamera(box) {
   const center = box.getCenter(new THREE.Vector3());
   const size   = box.getSize(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z);
@@ -161,8 +180,12 @@ function addBed(box) {
 function clearMesh() {
   if (currentMesh) {
     scene.remove(currentMesh);
-    currentMesh.geometry.dispose();
-    currentMesh.material.dispose();
+    currentMesh.traverse(obj => {
+      if (obj.isMesh) {
+        obj.geometry.dispose();
+        obj.material.dispose();
+      }
+    });
     currentMesh = null;
   }
   if (currentBed) {
@@ -180,29 +203,42 @@ function loadMesh(model) {
   clearMesh();
   placeholder.style.display = 'none';
 
-  if (model.format !== 'stl') {
+  if (model.format !== 'stl' && model.format !== 'obj') {
     placeholder.querySelector('p').textContent =
-      `Format "${model.format.toUpperCase()}" is not previewable — only STL is supported.`;
+      `Format "${model.format.toUpperCase()}" is not previewable — only STL and OBJ are supported.`;
     placeholder.style.display = 'flex';
     return;
   }
 
   loading.style.display = 'flex';
 
-  fetchAndDecompress(meshZipUrl(model))
+  fetchModelBuffer(model)
     .then(buffer => {
       loading.style.display = 'none';
-      const loader   = new THREE.STLLoader();
-      const geometry = loader.parse(fixTruncatedBinaryStl(buffer));
-      geometry.computeVertexNormals();
 
-      const mat = new THREE.MeshPhongMaterial({
+      const makeMaterial = () => new THREE.MeshPhongMaterial({
         color: 0x7090c0, specular: 0x334466, shininess: 55,
+        wireframe: isWireframe,
       });
-      currentMesh = new THREE.Mesh(geometry, mat);
-      currentMesh.material.wireframe = isWireframe;
+
+      if (model.format === 'obj') {
+        const text   = new TextDecoder().decode(buffer);
+        const object = new THREE.OBJLoader().parse(text);
+        object.traverse(obj => {
+          if (obj.isMesh) {
+            if (!obj.geometry.attributes.normal) obj.geometry.computeVertexNormals();
+            obj.material = makeMaterial();
+          }
+        });
+        currentMesh = object;
+      } else {
+        const geometry = new THREE.STLLoader().parse(fixTruncatedBinaryStl(buffer));
+        geometry.computeVertexNormals();
+        currentMesh = new THREE.Mesh(geometry, makeMaterial());
+      }
+
       scene.add(currentMesh);
-      fitCamera(geometry);
+      fitCamera(new THREE.Box3().setFromObject(currentMesh));
     })
     .catch(err => {
       loading.style.display = 'none';
@@ -218,7 +254,7 @@ async function downloadMesh(model) {
   if (btn) { btn.textContent = 'Downloading…'; btn.disabled = true; }
 
   try {
-    const buffer = await fetchAndDecompress(meshZipUrl(model));
+    const buffer = await fetchModelBuffer(model);
     const blob   = new Blob([buffer]);
     const url    = URL.createObjectURL(blob);
     const a      = document.createElement('a');
@@ -458,7 +494,11 @@ initThree();
 document.getElementById('btn-wireframe').addEventListener('click', () => {
   isWireframe = !isWireframe;
   document.getElementById('btn-wireframe').classList.toggle('active', isWireframe);
-  if (currentMesh) currentMesh.material.wireframe = isWireframe;
+  if (currentMesh) {
+    currentMesh.traverse(obj => {
+      if (obj.isMesh) obj.material.wireframe = isWireframe;
+    });
+  }
 });
 
 // Tri-state filter buttons — reset poly range when these change

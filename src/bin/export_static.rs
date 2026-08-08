@@ -26,6 +26,35 @@ struct ModelRecord {
     degenerate_faces: bool,
     vertices: u64,
     faces: u64,
+    /// Number of split parts for oversized meshes (absent = single zip).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parts: Option<u32>,
+}
+
+/// jsDelivr refuses to serve files above ~20 MB from GitHub repos, so any
+/// mini-zip larger than this is split into parts of `CHUNK_SIZE` raw bytes.
+const ZIP_SIZE_LIMIT: u64 = 20 * 1024 * 1024;
+/// Raw (decompressed) bytes per part — matches the existing part files.
+const CHUNK_SIZE: usize = 15 * 1024 * 1024;
+
+fn num_parts(raw_len: usize) -> u32 {
+    (raw_len.div_ceil(CHUNK_SIZE)) as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn num_parts_matches_published_split_files() {
+        // Real sizes from the dataset and the part counts published in the
+        // Thingi10K-meshes-* repos.
+        assert_eq!(num_parts(78_245_934), 5); // 112798.stl
+        assert_eq!(num_parts(99_587_934), 7); // 1422991.stl
+        assert_eq!(num_parts(220_004_755), 14); // 688370.stl
+        assert_eq!(num_parts(CHUNK_SIZE), 1);
+        assert_eq!(num_parts(CHUNK_SIZE + 1), 2);
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,6 +149,7 @@ fn load_models(
             degenerate_faces: parse_bool(&rec[7]),
             vertices,
             faces,
+            parts: None, // filled in after export
         });
     }
 
@@ -135,11 +165,12 @@ fn load_models(
 
 // ── Mini-zip export ───────────────────────────────────────────────────────────
 
+/// Returns a map of model id → part count for meshes that had to be split.
 fn export_meshes(
     zip_path: &Path,
     models: &[ModelRecord],
     base_output: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<HashMap<u64, u32>, Box<dyn std::error::Error>> {
     // Build a map from mesh entry name → repo number for fast lookup.
     let id_to_repo: HashMap<u64, u8> = models.iter().map(|m| (m.id, m.repo)).collect();
 
@@ -156,6 +187,7 @@ fn export_meshes(
 
     let count = archive.len();
     let mut processed = 0usize;
+    let mut split_parts: HashMap<u64, u32> = HashMap::new();
 
     for i in 0..count {
         // Peek at the name without borrowing the archive mutably yet.
@@ -193,16 +225,36 @@ fn export_meshes(
         let out_dir = base_output
             .join(format!("meshes-{}", repo))
             .join("meshes");
-        let out_path = out_dir.join(format!("{}.{}.zip", id, ext));
-
-        // Copy raw compressed bytes without decompression.
-        let raw = archive.by_index_raw(i)?;
-        let out_file = File::create(&out_path)?;
-        let buf_writer = BufWriter::new(out_file);
-        let mut zip_writer = zip::ZipWriter::new(buf_writer);
         let new_name = format!("{}.{}", id, ext);
-        zip_writer.raw_copy_file_rename(raw, &new_name)?;
-        zip_writer.finish()?;
+
+        let compressed_size = archive.by_index_raw(i)?.compressed_size();
+        if compressed_size > ZIP_SIZE_LIMIT {
+            // Too big for jsDelivr — split the raw mesh into CHUNK_SIZE slices,
+            // each written as its own zip: ID.ext_1.zip, ID.ext_2.zip, …
+            let mut raw_bytes = Vec::new();
+            std::io::Read::read_to_end(&mut archive.by_index(i)?, &mut raw_bytes)?;
+            let parts = num_parts(raw_bytes.len());
+            for (p, chunk) in raw_bytes.chunks(CHUNK_SIZE).enumerate() {
+                let out_path = out_dir.join(format!("{}.{}_{}.zip", id, ext, p + 1));
+                let mut zip_writer =
+                    zip::ZipWriter::new(BufWriter::new(File::create(&out_path)?));
+                let options = zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated);
+                zip_writer.start_file(&new_name, options)?;
+                std::io::Write::write_all(&mut zip_writer, chunk)?;
+                zip_writer.finish()?;
+            }
+            split_parts.insert(id, parts);
+        } else {
+            // Copy raw compressed bytes without decompression.
+            let out_path = out_dir.join(format!("{}.{}.zip", id, ext));
+            let raw = archive.by_index_raw(i)?;
+            let out_file = File::create(&out_path)?;
+            let buf_writer = BufWriter::new(out_file);
+            let mut zip_writer = zip::ZipWriter::new(buf_writer);
+            zip_writer.raw_copy_file_rename(raw, &new_name)?;
+            zip_writer.finish()?;
+        }
 
         processed += 1;
         if processed % 500 == 0 {
@@ -210,8 +262,12 @@ fn export_meshes(
         }
     }
 
-    println!("  Done — exported {} mesh files total.", processed);
-    Ok(())
+    println!(
+        "  Done — exported {} mesh files total ({} split into parts).",
+        processed,
+        split_parts.len()
+    );
+    Ok(split_parts)
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -224,10 +280,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Reading models from {} …", zip_path.display());
-    let models = load_models(&zip_path)?;
+    let mut models = load_models(&zip_path)?;
     println!("Loaded {} models.", models.len());
 
-    // ── 1. Write docs/data/models.json ────────────────────────────────────────
+    // ── 1. Export mini-zips (must run first — it determines part counts) ──────
+    let mesh_export = Path::new("mesh-export");
+    println!("Exporting mini-zips to {} …", mesh_export.display());
+    let split_parts = export_meshes(&zip_path, &models, mesh_export)?;
+    for m in models.iter_mut() {
+        m.parts = split_parts.get(&m.id).copied();
+    }
+
+    // ── 2. Write docs/data/models.json ────────────────────────────────────────
     let docs_data = Path::new("docs/data");
     fs::create_dir_all(docs_data)?;
     let json_path = docs_data.join("models.json");
@@ -235,11 +299,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json = serde_json::to_string(&models)?;
     fs::write(&json_path, &json)?;
     println!("  Wrote {} bytes.", json.len());
-
-    // ── 2. Export mini-zips ───────────────────────────────────────────────────
-    let mesh_export = Path::new("mesh-export");
-    println!("Exporting mini-zips to {} …", mesh_export.display());
-    export_meshes(&zip_path, &models, mesh_export)?;
 
     // ── Repo split summary ────────────────────────────────────────────────────
     let repo1: Vec<u64> = models.iter().filter(|m| m.repo == 1).map(|m| m.id).collect();
