@@ -30,6 +30,29 @@ let polyAbsMax = 1;
 const MESH_CDN = new URLSearchParams(location.search).get('cdn')
   || 'https://cdn.jsdelivr.net/gh/larsbrubaker';
 
+// ── Deep link ───────────────────────────────────────────────────────────────
+// `?model=<id>` opens straight to one model, so links are shareable from
+// other tools. Parsed here; applied after the catalog loads (see Boot).
+const DEEP_LINK_ID = (() => {
+  const raw = new URLSearchParams(location.search).get('model');
+  if (raw === null || !/^\d+$/.test(raw.trim())) return null;   // unknown/garbage → ignore
+  return parseInt(raw, 10);
+})();
+
+// Keep the address bar in sync with the current selection without adding
+// history entries (back should leave the page, not walk the click history).
+// Every other param — notably `cdn` — is preserved.
+function syncUrlToSelection(id) {
+  const params = new URLSearchParams(location.search);
+  params.set('model', String(id));
+  history.replaceState(null, '', `${location.pathname}?${params}${location.hash}`);
+}
+
+function scrollListEntryIntoView(id) {
+  const el = document.querySelector(`.model-item[data-id="${id}"]`);
+  if (el) el.scrollIntoView({ block: 'center' });
+}
+
 // Meshes whose zip exceeds jsDelivr's ~20 MB limit are split into parts:
 // ID.ext_1.zip … ID.ext_N.zip, each holding a 15 MiB slice of the raw file.
 // `model.parts` (from models.json) is N; absent means a single ID.ext.zip.
@@ -364,6 +387,7 @@ function selectModel(m) {
   );
   showDetails(m);
   loadMesh(m);
+  syncUrlToSelection(m.id);
 }
 
 // ── Polygon dual-range slider (custom drag) ───────────────────────────────────
@@ -641,6 +665,18 @@ fetch('data/models.json')
     // during init doesn't overwrite the saved state
     document.getElementById('filters-section').addEventListener('toggle', saveUIState);
     document.getElementById('geo-section').addEventListener('toggle',     saveUIState);
+
+    // A `?model=` deep link outranks the restored selection. It also outranks
+    // the restored filters: if they hide the model from the list we still load
+    // it in the viewer — only the list scroll is best-effort.
+    const linked = DEEP_LINK_ID != null
+      ? allModels.find(m => m.id === DEEP_LINK_ID)
+      : null;
+    if (linked) {
+      selectModel(linked);
+      scrollListEntryIntoView(linked.id);
+      return;
+    }
 
     // Restore previously selected model
     try {
